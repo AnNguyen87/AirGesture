@@ -2,11 +2,6 @@
 @author: Viet Nguyen <nhviet1009@gmail.com>
 """
 import numpy as np
-from nes_py.wrappers import JoypadSpace
-import gym
-import gym_super_mario_bros
-from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
-from gym_chrome_dino.utils.wrappers import make_dino
 import tensorflow as tf
 from time import sleep
 from src.config import HAND_GESTURES
@@ -25,27 +20,33 @@ def is_in_triangle(point, triangle):
         return False
 
 
-def load_graph(path):
-    detection_graph = tf.Graph()
-    with detection_graph.as_default():
-        graph_def = tf.GraphDef()
-        with tf.gfile.GFile(path, 'rb') as fid:
-            graph_def.ParseFromString(fid.read())
-            tf.import_graph_def(graph_def, name='')
-        sess = tf.Session(graph=detection_graph)
-    return detection_graph, sess
+def load_graph(model_file):
+    graph = tf.Graph()
+    graph_def = tf.compat.v1.GraphDef()
+    
+    with open(model_file, "rb") as f:
+        graph_def.ParseFromString(f.read())
+    with graph.as_default():
+        tf.import_graph_def(graph_def, name="")
+    
+    sess = tf.compat.v1.Session(graph=graph)
+    return graph, sess
 
 
 def detect_hands(image, graph, sess):
-    input_image = graph.get_tensor_by_name('image_tensor:0')
+    input_array = np.array(image, dtype=np.uint8)
+    input_array = np.expand_dims(input_array, axis=0)
+
+    image_tensor = graph.get_tensor_by_name('image_tensor:0')
     detection_boxes = graph.get_tensor_by_name('detection_boxes:0')
     detection_scores = graph.get_tensor_by_name('detection_scores:0')
     detection_classes = graph.get_tensor_by_name('detection_classes:0')
-    image = image[None, :, :, :]
-    boxes, scores, classes = sess.run([detection_boxes, detection_scores, detection_classes],
-                                      feed_dict={input_image: image})
+    
+    (boxes, scores, classes) = sess.run(
+        [detection_boxes, detection_scores, detection_classes],
+        feed_dict={image_tensor: input_array})
+    
     return np.squeeze(boxes), np.squeeze(scores), np.squeeze(classes)
-
 
 def predict(boxes, scores, classes, threshold, width, height, num_hands=2):
     count = 0
@@ -61,31 +62,64 @@ def predict(boxes, scores, classes, threshold, width, height, num_hands=2):
             count += 1
     return results
 
-
-def mario(v, lock):
-    env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0')
-    env = JoypadSpace(env, COMPLEX_MOVEMENT)
-    done = True
-    while True:
-        if done:
-            env.reset()
+def dinosaur(v, lock):
+    try:
+        print("🦖 Opening Dino Game in browser...")
+        import webbrowser
+        import time
+        import pyautogui
+        
+        webbrowser.open('https://elgoog.im/t-rex/')
+        time.sleep(5)
+        
+        print("Browser opened! Game should be loading...")
+        print("If needed, click on the game and press SPACE to start")
+        
+        # Try to focus and start the game
+        try:
+            pyautogui.click(500, 400)
+            time.sleep(1)
+            pyautogui.press('space')
+            print("Game started! Controlling with hand gestures...")
+        except:
+            print("Please start the game manually (click + SPACE)")
+        
+        print("Hand controls:")
+        print("Closed hand: Run")
+        print("Open hand in TOP half: JUMP (Space)")
+        print("Open hand in BOTTOM half: DUCK (Down arrow)")
+        
+        last_action = None
+        while True:
             with lock:
-                v.value = 0
-        with lock:
-            u = v.value
-        _, _, done, _ = env.step(u)
-        env.render()
-        sleep(0.01)
-
-def dinosaur(v,lock):
-    env = gym.make('ChromeDino-v0')
-    env = make_dino(env, timer=True, frame_stack=True)
-    done = True
-    while True:
-        if done:
-            env.reset()
+                action = v.value
+            
+            # Only send key presses when action changes
+            if action != last_action:
+                if action == 1:  # Jump
+                    pyautogui.press('space')
+                    print("JUMP!")
+                elif action == 2:  # Duck
+                    pyautogui.keyDown('down')
+                    print("⬇DUCKING...")
+                elif last_action == 2:  # Was ducking, now stop
+                    pyautogui.keyUp('down')
+                    print("STANDING UP")
+                
+                last_action = action
+            
+            time.sleep(0.1)
+            
+    except Exception as e:
+        print(f"Game error: {e}")
+        print("Running in simulation mode...")
+        import time
+        action_names = {0: "RUN", 1: "JUMP", 2: "DUCK"}
+        last_action = None
+        while True:
             with lock:
-                v.value = 0
-        with lock:
-            u = v.value
-        _, _, done, _ = env.step(u)
+                action = v.value
+            if action != last_action:
+                print(f"{action_names.get(action, 'RUN')}")
+                last_action = action
+            time.sleep(0.1)

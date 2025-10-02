@@ -1,31 +1,31 @@
-"""
-@author: Viet Nguyen <nhviet1009@gmail.com>
-"""
 import tensorflow as tf
 import cv2
 import multiprocessing as _mp
 from src.utils import load_graph, dinosaur, detect_hands, predict
 from src.config import RED, GREEN, YELLOW
+import argparse
 
-tf.flags.DEFINE_integer("width", 640, "Screen width")
-tf.flags.DEFINE_integer("height", 480, "Screen height")
-tf.flags.DEFINE_float("threshold", 0.6, "Threshold for score")
-tf.flags.DEFINE_float("alpha", 0.3, "Transparent level")
-tf.flags.DEFINE_string("pre_trained_model_path", "src/pretrained_model.pb", "Path to pre-trained model")
+parser = argparse.ArgumentParser()
+parser.add_argument("--width", type=int, default=640, help="Screen width")
+parser.add_argument("--height", type=int, default=480, help="Screen height")
+parser.add_argument("--threshold", type=float, default=0.6, help="Threshold for score")
+parser.add_argument("--alpha", type=float, default=0.3, help="Transparent level")
+parser.add_argument("--pre_trained_model_path", type=str, default="src/pretrained_model.pb", help="Path to pre-trained model")
 
-FLAGS = tf.flags.FLAGS
-
+FLAGS = parser.parse_args()
 
 def main():
     graph, sess = load_graph(FLAGS.pre_trained_model_path)
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, FLAGS.width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FLAGS.height)
+    
     mp = _mp.get_context("spawn")
     v = mp.Value('i', 0)
     lock = mp.Lock()
     process = mp.Process(target=dinosaur, args=(v, lock))
     process.start()
+    
     while True:
         key = cv2.waitKey(10)
         if key == ord("q"):
@@ -43,10 +43,10 @@ def main():
             y = int((y_min + y_max) / 2)
             cv2.circle(frame, (x, y), 5, RED, -1)
             if category == "Closed":
-                action = 0  # Do nothing
+                action = 0
                 text = "Run"
             elif category == "Open" and y < FLAGS.height/2:
-                action = 1 # Jump
+                action = 1
                 text = "Jump"
             elif category == "Open" and y > FLAGS.height/2:
                 action = 2
@@ -66,7 +66,6 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
-
 
 if __name__ == '__main__':
     main()
